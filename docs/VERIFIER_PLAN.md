@@ -1,0 +1,77 @@
+# Claim verifier: design, training data and plan
+
+Status (Nov 12): real training data is built from the training-only assignments TR1 and
+TR2 (`verifier/train_data.py`, 594 examples, authority tone held out), with an evaluation
+on dev claims with the evidence the pipeline actually gathered (`verifier/eval_data.py`,
+`verifier/evaluate.py`); `notebooks/verifier_ft.ipynb` trains, evaluates against the
+untuned 3B and the prompted 7B, and runs the pipeline with the fine-tuned verifier. The
+choices that differ from the plan below are in `docs/DECISIONS.md` section 14. The smoke
+test passed on a T4 at the mid-submission (`results/verifier_smoke/README.md`).
+
+## Role in the system (proposal section 7)
+
+The claim extractor splits an appeal into claims; the evidence agent gathers evidence for
+each claim with tools; the **verifier** reads one claim as the student wrote it plus that
+evidence and answers `supported`, `refuted` or `needs_human`, citing the evidence item it
+relies on; the aggregator turns the verdicts into a mark change or an escalation.
+
+The verifier sees the claim **with its tone** on purpose: RQ1b asks whether robustness to
+tone comes from design (claim splitting) or from training (a verifier trained on
+tone-paired data), so the tone must reach the verifier for training to matter.
+
+## Format (built: `agent/schemas.py`, `verifier/format.py`)
+
+- **Input, `EvidenceBundle`:** `claim` (verbatim span), `target` (test id, `rubric:...`,
+  `policy:...` or `total`), `evidence`: items with the agent's evidence id (`E3`), the
+  source tool and the tool output (shortened to 2,500 characters, so a whole grade report
+  fits; in the pipeline the bundle holds all evidence of the appeal, so real training needs
+  `max_length` of about 4096 tokens, not the smoke test's 1024).
+- **Output, `VerifierOutput`:** `{"verdict": ..., "evidence_id": ...}`; a decided verdict
+  must cite an evidence id that is in the bundle. Parsing is strict (no repair).
+- **Training example, `VerifierExample`:** bundle + label + tone + assignment + `pair_id`
+  linking the tone variants of the same claim and evidence.
+- One prompt (`prompt_messages`) and one answer format (`answer_text`) serve training and
+  inference, so they cannot drift apart. `bundle_for_claim` builds a bundle from the
+  agent's evidence.
+
+## Model and training (built: `verifier/train.py`, `configs/verifier_smoke.yaml`)
+
+- Qwen2.5-3B-Instruct in 4-bit (NF4, double quantisation), float16 compute (T4: no
+  bfloat16), LoRA r=16, alpha 32, dropout 0.05 on the attention projections, gradient
+  checkpointing.
+- Causal-LM fine-tuning on the answer JSON only (prompt tokens masked); examples that do
+  not fit `max_length` are skipped and counted, never truncated.
+- Seeded; every step's loss is logged as JSONL with run id and config hash; the run
+  records the git commit. The LoRA adapter stays in the Kaggle output, never in Git.
+- Libraries: optional `gpu` extra (`pip install -e ".[gpu]"`, Kaggle only).
+
+## Training data plan (proposal section 9)
+
+| Item | Plan |
+| --- | --- |
+| Source | the training-only assignments, never the test assignments (the proposal plans 4; `docs/BENCHMARK_PLAN.md` suggests 1-2 given the time: open question 10) |
+| Labels | known by construction: generated with the same planted-error procedure as the benchmark, so each claim's verdict follows from the planted error and the reference grader |
+| Evidence | tool outputs produced by running the real tools (sandbox, course-doc search) on the training submissions, in the bundle format above |
+| Tone pairing | each claim and evidence written in 3 tones (polite, emotional, hidden instruction) with the same label; **authority held out** to test generalisation to an unseen tone |
+| Generator | Llama-3.1-8B-Instruct on Kaggle; a second family (Gemma-2-9B or Mistral-7B) only for the out-of-distribution test |
+| Size | about 3,500 examples with 4 assignments; fewer with 1-2 (to be decided), balanced across verdicts |
+| Ablation A5 | the same data without tone pairing (one tone per claim) |
+
+The dummy generator (`verifier/dummy_data.py`) already produces data in this shape (tone
+pairs, held-out authority tone) for the smoke test.
+
+## Evaluation (proposal sections 6 and 11)
+
+Claim-verdict macro-F1 and tone sensitivity against the untuned 3B, a prompted 7B and a
+few-shot prompted 7B (ablation A4); tested on held-out test assignments, the held-out
+authority tone, hand-written appeals and the other generator's appeals.
+
+## Timeline to the final submission (November 15)
+
+| When | Step |
+| --- | --- |
+| Oct 29 | smoke test on Kaggle: passed (training pipeline runs) |
+| Nov 1-4 | training-data generator on the training-only assignments; first real training run |
+| Nov 4-7 | claim extractor and aggregator; verifier inside the pipeline |
+| Nov 7-10 | ablations A4 and A5; verifier evaluation on held-out tone and generator |
+| Nov 10-13 | final runs and analysis |

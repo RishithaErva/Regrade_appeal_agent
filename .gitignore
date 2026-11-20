@@ -1,0 +1,50 @@
+# Private evaluation data (test cases and their assignments and submissions): never commit
+data/cases/test/
+data/private/
+
+# Secrets
+.env
+.env.*
+kaggle.json
+
+# Model weights and checkpoints
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.ckpt
+checkpoints/
+adapters/
+models/
+
+# Caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+sandbox/cache/
+
+# Kaggle and run outputs (selected runs are committed under results/)
+test_private.zip
+**/test_private/
+outputs/
+runs/
+*_outputs/
+*_outputs.zip
+logs/
+/kaggle/
+.ipynb_checkpoints/
+
+# Python packaging and environments
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# vLLM server output
+vllm.log
+vllm.pid
