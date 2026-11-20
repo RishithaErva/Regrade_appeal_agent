@@ -1,8 +1,5 @@
 # Regrade Appeals Agent
 
-Research prototype for the LMA Group Project 2026 (Team Attention Seekers: Jagadish Kollu,
-Rishitha Erva, Nallala Karthik, Suresh Kumar Vuyala).
-
 The agent handles regrade appeals for Python programming assignments. It splits each
 appeal into claims and checks every claim against evidence: it runs the student's code and
 retrieves the rubric and the dated course announcements. A fine-tuned 3B verifier judges
